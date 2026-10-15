@@ -152,9 +152,10 @@ function vMasuk() {
     <p class="small" id="mErr" style="color:var(--bad)" hidden></p>
     <button class="btn primary" type="submit" id="mBtn">Masuk</button>
     <p class="small muted">Lupa password? Minta admin melakukan reset.</p>
-  </form>`;
+  </form>${vPasang()}`;
 }
 function pasangMasuk() {
+  pasangTombolPasang();
   const f = $("#fMasuk"), err = $("#mErr"), btn = $("#mBtn");
   $("#mLihat").onchange = e => { $("#mPass").type = e.target.checked ? "text" : "password"; };
   f.onsubmit = async e => {
@@ -375,9 +376,11 @@ function vProfil() {
   </form>
   <div class="card"><button class="btn ghost" type="button" id="segarkan">Perbarui data dari admin</button>
     <button class="btn ghost" type="button" id="keluar">Keluar dari akun</button></div>
+  ${vPasang()}
   <p class="small muted" style="text-align:center">Absen Live · data dikirim ke Google Sheet yayasan</p>`;
 }
 function pasangProfil() {
+  pasangTombolPasang();
   const tulis = (el, t, ok) => { el.textContent = t; el.style.color = ok ? "var(--good)" : "var(--bad)"; el.hidden = false; };
   $("#fProfil").onsubmit = e => {
     e.preventDefault();
@@ -421,6 +424,57 @@ function kecilkan(file) {
     img.onerror = () => { URL.revokeObjectURL(url); no(new Error("gambar")); };
     img.src = url;
   });
+}
+
+/* ---------- pasang aplikasi ke layar utama ---------- */
+let installEvt = null, panduanBuka = false;
+const UA = navigator.userAgent || "";
+const isIOS = /iPhone|iPad|iPod/i.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isAndroid = /Android/i.test(UA);
+const diAppLain = /FBAN|FBAV|Instagram|Line\/|WhatsApp|; wv\)/i.test(UA);          // browser bawaan aplikasi chat/sosmed
+const iosBukanSafari = isIOS && /CriOS|FxiOS|EdgiOS|OPiOS/i.test(UA);
+function sudahTerpasang() {
+  return (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+}
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; segarkanPasang(); });
+addEventListener("appinstalled", () => { installEvt = null; toastInline("Aplikasi terpasang. Buka dari ikon Absen Live di layar HP."); segarkanPasang(); });
+function langkahPasang() {
+  if (isIOS && iosBukanSafari) return ["Salin alamat halaman ini.", "Buka aplikasi <b>Safari</b> dan tempel alamatnya.", "Ketuk tombol <b>Bagikan</b> (kotak dengan panah ke atas).", "Pilih <b>Tambahkan ke Layar Utama</b> → <b>Tambah</b>."];
+  if (isIOS) return ["Ketuk tombol <b>Bagikan</b> (kotak dengan panah ke atas) di bagian bawah Safari.", "Gulir ke bawah, pilih <b>Tambahkan ke Layar Utama</b>.", "Ketuk <b>Tambah</b> di kanan atas.", "Buka aplikasi dari ikon <b>Absen Live</b> di layar HP."];
+  if (diAppLain) return ["Ketuk <b>titik tiga</b> di kanan atas.", "Pilih <b>Buka di Chrome</b> (atau <b>Buka di browser</b>).", "Di Chrome, ketuk tombol <b>Pasang</b> yang muncul di halaman ini."];
+  if (isAndroid) return ["Ketuk <b>titik tiga</b> di kanan atas Chrome.", "Pilih <b>Instal aplikasi</b> atau <b>Tambahkan ke layar utama</b>.", "Ketuk <b>Instal</b>, lalu buka dari ikon <b>Absen Live</b>."];
+  return ["Buka alamat ini di HP dengan <b>Chrome</b> (Android) atau <b>Safari</b> (iPhone).", "Ikuti tombol atau panduan pasang yang muncul di halaman login."];
+}
+function vPasang() {
+  if (sudahTerpasang()) return "";
+  const otomatis = !!installEvt;
+  return `<div class="card" id="kartuPasang" style="background:var(--accent-soft);border-color:transparent;gap:10px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <img src="icon-192.png" alt="" width="44" height="44" style="border-radius:11px;flex:none">
+      <div style="flex:1;min-width:0"><b>Pasang aplikasi Absen Live</b><div class="small muted">Supaya bisa dibuka langsung dari layar HP, seperti aplikasi biasa.</div></div>
+      <button class="btn dark" type="button" id="btnPasang" style="flex:none">${otomatis ? "Pasang" : (panduanBuka ? "Tutup" : "Cara pasang")}</button>
+    </div>
+    ${!otomatis && panduanBuka ? `<ol class="small" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">${langkahPasang().map(l => `<li>${l}</li>`).join("")}</ol>
+      ${isIOS && iosBukanSafari || diAppLain ? `<button class="btn" type="button" id="salinAlamat">Salin alamat halaman ini</button>` : ""}` : ""}
+  </div>`;
+}
+function segarkanPasang() {
+  const k = $("#kartuPasang");
+  if (k) { const t = document.createElement("div"); t.innerHTML = vPasang(); const baru = t.firstElementChild; baru ? k.replaceWith(baru) : k.remove(); pasangTombolPasang(); }
+}
+function pasangTombolPasang() {
+  const b = $("#btnPasang"); if (!b) return;
+  b.onclick = async () => {
+    if (installEvt) {
+      installEvt.prompt();
+      try { const r = await installEvt.userChoice; if (r && r.outcome === "accepted") installEvt = null; } catch (e) {}
+      segarkanPasang(); return;
+    }
+    panduanBuka = !panduanBuka; segarkanPasang();
+  };
+  const sa = $("#salinAlamat"); if (sa) sa.onclick = async () => {
+    try { await navigator.clipboard.writeText(location.href.split("#")[0]); toastInline("Alamat disalin."); } catch (e) { toastInline(location.href.split("#")[0]); }
+  };
 }
 
 /* ---------- mulai ---------- */

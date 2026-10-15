@@ -1,6 +1,6 @@
 // Service worker: menyimpan tampilan aplikasi supaya tetap bisa dibuka tanpa sinyal.
 // Naikkan VERSI setiap kali file aplikasi diubah agar HP host mengambil versi terbaru.
-const VERSI = "absen-live-v2";
+const VERSI = "absen-live-v3";
 const FILE = ["./", "./index.html", "./app.js", "./config.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
