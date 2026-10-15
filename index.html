@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Absen Live Sahabat Leo</title>
+<meta name="theme-color" content="#E5A019">
+<meta name="description" content="Absen dan catat performa live TikTok untuk host komunitas Yayasan Sahabat Leo.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#F4F4F7; --surface:#FFFFFF; --sunk:#ECEBF1; --ink:#1D1A2B; --muted:#676379; --line:#E0DEE8;
+  --accent:#E5A019; --accent-soft:#FBEFD3; --accent-ink:#7A5300; --data:#5048B8; --data-soft:#E4E2F7;
+  --good:#1D8456; --good-soft:#DDF2E7; --warn:#B86E00; --warn-soft:#FBEBD0; --bad:#B9411A; --bad-soft:#F8E1D8;
+  --display:"Bricolage Grotesque","Figtree",system-ui,sans-serif; --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#14121D; --surface:#1D1A29; --sunk:#252135; --ink:#EDECF3; --muted:#A39FB6; --line:#2F2B42;
+  --accent:#F0B03A; --accent-soft:#3A2E14; --accent-ink:#F4C266; --data:#8E87F2; --data-soft:#2C2850;
+  --good:#4CC48A; --good-soft:#173528; --warn:#E6A440; --warn-soft:#3A2A10; --bad:#EF7B55; --bad-soft:#3D1F15; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--data);outline-offset:2px}
+[hidden]{display:none!important}
+h1,h2,h3{font-family:var(--display);margin:0;letter-spacing:-.01em;text-wrap:balance}
+p{margin:0}
+.top{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(env(safe-area-inset-top,0px) + 12px) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}
+.paw{width:36px;height:36px;border-radius:10px;background:var(--accent);display:grid;place-items:center;flex:none}
+.paw svg{width:22px;height:22px}
+.top .t{flex:1;min-width:0}
+.top .eb{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.top h1{font-size:19px;line-height:1.2}
+.net{font-size:12px;font-weight:600;padding:4px 9px;border-radius:99px;background:var(--good-soft);color:var(--good);white-space:nowrap}
+.net.off{background:var(--warn-soft);color:var(--warn)}
+main{max-width:640px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) calc(96px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.muted{color:var(--muted)} .small{font-size:13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.full{grid-column:1/-1}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:13px;font-weight:600}
+.field .hint{font-size:12px;color:var(--muted)}
+.req{color:var(--bad)}
+input,select,textarea{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:11px 12px;min-height:46px}
+textarea{min-height:70px;resize:vertical}
+input[type=file]{padding:9px}
+.btn{border:1px solid var(--line);background:var(--surface);padding:12px 16px;border-radius:12px;cursor:pointer;font-weight:700;min-height:48px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#2A1C00;width:100%;font-size:16px}
+.btn.dark{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn:disabled{opacity:.55}
+.note{font-size:13.5px;padding:11px 13px;border-radius:10px;background:var(--data-soft)}
+.note.warn{background:var(--warn-soft)} .note.bad{background:var(--bad-soft)} .note.good{background:var(--good-soft)}
+.sesi{display:flex;flex-direction:column;gap:6px}
+.sesi .row{display:flex;gap:10px;align-items:center;font-size:14px;padding:8px 10px;border-radius:9px;background:var(--sunk)}
+.sesi .row.me{background:var(--accent-soft);font-weight:700}
+.sesi .no{font-family:var(--display);font-weight:700;width:22px;text-align:center}
+details{border-top:1px solid var(--line);padding-top:12px}
+details summary{cursor:pointer;font-weight:700;list-style:none;display:flex;justify-content:space-between;align-items:center}
+details summary::-webkit-details-marker{display:none}
+details summary::after{content:"+";font-size:20px;color:var(--muted)}
+details[open] summary::after{content:"–"}
+.thumb{max-width:100%;max-height:220px;border-radius:10px;border:1px solid var(--line);object-fit:contain;align-self:flex-start}
+.done{align-items:flex-start;background:var(--good-soft);border-color:transparent}
+.done .big{font-family:var(--display);font-size:44px;font-weight:700;line-height:1;color:var(--good)}
+.item{display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:12px;background:var(--surface);border:1px solid var(--line)}
+.item .h{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:700;background:var(--sunk);color:var(--muted)}
+.pill.ok{background:var(--good-soft);color:var(--good)} .pill.wait{background:var(--warn-soft);color:var(--warn)}
+.nums{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted)}
+.nums b{color:var(--ink);font-variant-numeric:tabular-nums}
+nav.bottom{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--surface);border-top:1px solid var(--line);display:flex;justify-content:center;padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
+nav.bottom .in{display:flex;width:100%;max-width:640px}
+nav.bottom button{flex:1;border:0;background:transparent;padding:8px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-radius:10px;min-height:52px}
+nav.bottom button[aria-current="page"]{color:var(--accent-ink);background:var(--accent-soft)}
+nav.bottom svg{width:22px;height:22px}
+.badge{background:var(--bad);color:#fff;border-radius:99px;font-size:10px;padding:0 6px;margin-left:2px}
+.center{text-align:center;align-items:center}
+@media (max-width:380px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="paw" aria-hidden="true"><svg viewBox="0 0 32 32"><g fill="#2A1C00"><ellipse cx="16" cy="21" rx="7" ry="6"/><ellipse cx="7.5" cy="13" rx="3" ry="3.8"/><ellipse cx="24.5" cy="13" rx="3" ry="3.8"/><ellipse cx="12" cy="7.5" rx="2.8" ry="3.6"/><ellipse cx="20" cy="7.5" rx="2.8" ry="3.6"/></g></svg></div>
+  <div class="t"><div class="eb" id="yayasan">Yayasan Sahabat Leo</div><h1>Absen Live</h1></div>
+  <span class="net" id="net">Online</span>
+</header>
+
+<main id="app"><div class="card center"><p class="muted">Memuat…</p></div></main>
+
+<nav class="bottom" id="nav" hidden><div class="in">
+  <button type="button" data-go="absen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg>Absen</button>
+  <button type="button" data-go="riwayat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Riwayat<span class="badge" id="qBadge" hidden></span></span></button>
+  <button type="button" data-go="profil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Profil</button>
+</div></nav>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
