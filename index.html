@@ -83,6 +83,43 @@ nav.bottom button[aria-current="page"]{color:var(--accent-ink);background:var(--
 nav.bottom svg{width:22px;height:22px}
 .badge{background:var(--bad);color:#fff;border-radius:99px;font-size:10px;padding:0 6px;margin-left:2px}
 .center{text-align:center;align-items:center}
+.linkbtn{background:none;border:0;padding:0;color:var(--data);font-weight:600;cursor:pointer;text-decoration:underline}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.jw-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.jw-add{width:auto!important;font-size:15px;min-height:42px;padding:8px 14px}
+.jw-week{display:flex;align-items:center;gap:8px}
+.jw-week .btn{min-width:46px;padding:8px;font-size:20px;line-height:1}
+.jw-range{flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px}
+.jw-day{gap:8px;padding:14px}
+.jw-day.today{border-color:var(--accent)}
+.jw-dayhead{display:flex;align-items:center;gap:8px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.jw-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:transparent;border:0;border-left:4px solid var(--data);border-radius:6px;padding:6px 10px;font:inherit;color:inherit}
+button.jw-row{cursor:pointer}
+button.jw-row:hover{background:var(--sunk)}
+.jw-row.me{background:var(--accent-soft);border-left-color:var(--accent)}
+.jw-jam{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap;min-width:96px}
+.jw-who{flex:1;min-width:0;display:flex;flex-direction:column}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip-cek{position:relative;cursor:pointer}
+.chip-cek input{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;min-height:0}
+.chip-cek span{display:block;text-align:center;min-width:46px;padding:6px 8px;border:1px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;line-height:1.3;background:var(--surface)}
+.chip-cek input:checked+span{background:var(--accent);border-color:var(--accent);color:#2A1C00}
+.chip-cek input:focus-visible+span{outline:2px solid var(--data);outline-offset:2px}
+.row-btn{display:flex;gap:14px;margin-top:6px}
+.chip-jadwal{border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:7px 12px;font-weight:600;font-size:13px;cursor:pointer;min-height:36px}
+.chip-jadwal.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.seg{display:flex;background:var(--sunk);border-radius:12px;padding:4px;gap:4px}
+.seg button{flex:1;border:0;background:transparent;border-radius:9px;padding:9px 4px;font-weight:600;font-size:13px;color:var(--muted);cursor:pointer}
+.seg button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.pk-row{display:flex;gap:12px;align-items:center;padding:10px 8px;border-radius:10px}
+.pk-row.me{background:var(--accent-soft)}
+.pk-rank{width:30px;text-align:center;font-family:var(--display);font-weight:700;font-size:18px;flex:none}
+.pk-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.pk-top{display:flex;justify-content:space-between;gap:8px}
+.pk-val{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pk-bar{height:6px;background:var(--sunk);border-radius:3px;overflow:hidden}
+.pk-bar span{display:block;height:100%;background:var(--data);border-radius:3px}
+.pk-row.me .pk-bar span{background:var(--accent)}
 @media (max-width:380px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -97,6 +134,8 @@ nav.bottom svg{width:22px;height:22px}
 
 <nav class="bottom" id="nav" hidden><div class="in">
   <button type="button" data-go="absen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg>Absen</button>
+  <button type="button" data-go="jadwal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Jadwal</button>
+  <button type="button" data-go="peringkat" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v1.5A3.5 3.5 0 0 0 7.5 11M17 6h3v1.5a3.5 3.5 0 0 1-3.5 3.5"/></svg>Peringkat</button>
   <button type="button" data-go="riwayat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Riwayat<span class="badge" id="qBadge" hidden></span></span></button>
   <button type="button" data-go="profil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Profil</button>
 </div></nav>

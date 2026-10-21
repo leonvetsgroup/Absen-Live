@@ -122,8 +122,12 @@ function render() {
   if (!apiSiap()) { $("#nav").hidden = true; app.innerHTML = vBelumSiap(); return; }
   if (!profil || !profil.token || !profil.host) { $("#nav").hidden = true; app.innerHTML = vMasuk(); pasangMasuk(); return; }
   $("#nav").hidden = false;
+  if (layar === "peringkat" && !bolehPeringkat()) layar = "absen";
+  const np = $('#nav [data-go="peringkat"]'); if (np) np.hidden = !bolehPeringkat();
   document.querySelectorAll("#nav [data-go]").forEach(b => b.setAttribute("aria-current", b.dataset.go === layar ? "page" : "false"));
   if (layar === "absen") { app.innerHTML = hasil ? vSelesai() : vAbsen(); hasil ? pasangSelesai() : pasangAbsen(); }
+  else if (layar === "jadwal") { app.innerHTML = vJadwal(); pasangJadwal(); }
+  else if (layar === "peringkat") { app.innerHTML = vPeringkat(); pasangPeringkat(); }
   else if (layar === "riwayat") { app.innerHTML = vRiwayat(); pasangRiwayat(); }
   else { app.innerHTML = vProfil(); pasangProfil(); }
 }
@@ -172,11 +176,12 @@ function pasangMasuk() {
   };
 }
 function terimaProfil(r, token) {
-  config = { komunitas: r.komunitas || [], akun: r.akun || {} }; simpan(K.config, config);
+  config = { komunitas: r.komunitas || [], akun: r.akun || {}, pengaturan: r.pengaturan || (config && config.pengaturan) || {} }; simpan(K.config, config);
   const pr = r.profil || {};
   const lama = profil && profil.username === pr.username ? profil : {};
   const akunList = config.akun[pr.komunitas] || [];
-  profil = { username: pr.username, host: pr.host, komunitas: pr.komunitas, token: token || (profil && profil.token) || "",
+  if (!lama.username) { jw.kom = null; jw.kunci = ""; jw.data = null; pk.kom = null; pk.kunci = ""; pk.data = null; }
+  profil = { username: pr.username, host: pr.host, komunitas: pr.komunitas, peran: pr.peran || "host", token: token || (profil && profil.token) || "",
     akun: lama.akun || pr.akun || akunList[0] || "", lokasi: lama.lokasi || pr.lokasi || "" };
   simpan(K.profil, profil);
 }
@@ -193,6 +198,7 @@ function vAbsen() {
     <div><h2>Absen setelah live</h2><p class="muted small">${esc(profil.host)} · ${esc(profil.komunitas)}</p></div>
     <div class="grid">
       <div class="field full"><label for="aTgl">Tanggal live <span class="req">*</span></label><input type="date" id="aTgl" value="${esc(d.tanggal)}" max="${hariIni()}"></div>
+      <div class="field full note" id="jadwalSaya" hidden></div>
       <div class="field"><label for="aMulai">Jam mulai <span class="req">*</span></label><input type="time" id="aMulai" value="${esc(d.mulai)}"></div>
       <div class="field"><label for="aSelesai">Jam selesai <span class="req">*</span></label><input type="time" id="aSelesai" value="${esc(d.selesai)}"></div>
       <div class="field full"><label for="aAkun">Akun TikTok yang dipakai</label>
@@ -253,7 +259,8 @@ function simpanDraft() { simpan(K.draft, draft); }
 function pasangAbsen() {
   const f = $("#fAbsen"); if (!f) return;
   const ikat = (id, k, cb) => { const el = $("#" + id); if (!el) return; const up = () => { draft[k] = el.value; simpanDraft(); cb && cb(); }; el.addEventListener("input", up); el.addEventListener("change", up); };
-  ikat("aTgl", "tanggal", cekSesi); ikat("aMulai", "mulai", updSesi); ikat("aSelesai", "selesai", updSesi);
+  ikat("aTgl", "tanggal", () => { cekSesi(); muatJadwalSaya(draft.tanggal); });
+  muatJadwalSaya(draft.tanggal); ikat("aMulai", "mulai", updSesi); ikat("aSelesai", "selesai", updSesi);
   ikat("aLok", "lokasi"); ikat("aTema", "tema"); ikat("aCatatan", "catatan");
   ANGKA.forEach(([k]) => ikat("n_" + k, k));
   const sel = $("#aAkun"), lain = $("#aAkunLain");
@@ -410,6 +417,245 @@ function pasangProfil() {
     [K.profil, K.draft, K.antrean, K.config].forEach(x => localStorage.removeItem(x));
     profil = { username: profil.username }; simpan(K.profil, profil); draft = null; antrean = []; riwayat = null; pesanMasuk = ""; render();
   };
+}
+
+/* ---------- tanggal (lokal HP, WIB) ---------- */
+const keTgl = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const dariTgl = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+const tambahHari = (s, n) => { const d = dariTgl(s); d.setDate(d.getDate() + n); return keTgl(d); };
+const seninDari = s => { const d = dariTgl(s); const w = (d.getDay() + 6) % 7; d.setDate(d.getDate() - w); return keTgl(d); };
+const tglSingkat = s => { const d = dariTgl(s); return `${d.getDate()} ${BLN[d.getMonth()]}`; };
+const jamTitik = j => String(j || "").replace(":", ".");
+const isAdmin = () => profil && profil.peran === "admin";
+const bolehPeringkat = () => isAdmin() || !!(config.pengaturan && config.pengaturan.peringkatHost);
+
+/* ---------- JADWAL ---------- */
+let jw = { senin: seninDari(hariIni()), kom: null, data: null, host: [], err: "", memuat: false, form: null, kunci: "" };
+function jwKom() { if (jw.kom === null) jw.kom = isAdmin() ? "" : (profil.komunitas || ""); return jw.kom; }
+async function jwMuat(paksa) {
+  const kunci = `${jw.senin}|${jwKom()}`;
+  if (!paksa && jw.kunci === kunci && (jw.data || jw.memuat)) return;
+  jw.kunci = kunci; jw.memuat = true; jw.err = ""; if (paksa !== "diam") jw.data = null; if (layar === "jadwal") render();
+  try {
+    const r = await panggil("GET", { action: "jadwal", token: profil.token, dari: jw.senin, sampai: tambahHari(jw.senin, 6), komunitas: jwKom() });
+    if (jw.kunci !== kunci) return;
+    if (r.ok) { jw.data = r.data; jw.host = r.host || []; } else { jw.err = r.pesan || "Jadwal tidak bisa dimuat."; }
+  } catch (e) { jw.err = "Tidak ada sambungan. Jadwal muncul lagi saat ada sinyal."; }
+  jw.memuat = false; if (layar === "jadwal") render();
+}
+const LABEL_STATUS = { hadir: ["Sudah absen", "ok"], terlewat: ["Belum absen", "bad"], berlangsung: ["Sedang live", "wait"] };
+function vJadwal() {
+  const kom = jwKom(), admin = isAdmin();
+  const akhir = tambahHari(jw.senin, 6), mingguIni = seninDari(hariIni()) === jw.senin;
+  let h = `<div class="card" style="gap:12px">
+    <div class="jw-head"><div><h2>Jadwal live</h2><p class="small muted">${admin ? (kom ? esc(kom) : "Semua komunitas") : esc(profil.komunitas)} · waktu WIB</p></div>
+      ${admin ? `<button class="btn primary jw-add" type="button" id="jwTambah">+ Jadwal</button>` : ""}</div>
+    <div class="jw-week"><button class="btn" type="button" id="jwPrev" aria-label="Minggu sebelumnya">‹</button>
+      <div class="jw-range"><b>${tglSingkat(jw.senin)} – ${tglSingkat(akhir)} ${akhir.slice(0, 4)}</b>${mingguIni ? `<span class="small muted">Minggu ini</span>` : `<button class="linkbtn small" type="button" id="jwKini">Kembali ke minggu ini</button>`}</div>
+      <button class="btn" type="button" id="jwNext" aria-label="Minggu berikutnya">›</button></div>
+    ${admin ? `<div class="field"><label for="jwKom">Komunitas</label><select id="jwKom"><option value="">Semua komunitas</option>${(config.komunitas || []).map(k => `<option${k === kom ? " selected" : ""}>${esc(k)}</option>`).join("")}</select></div>` : ""}
+  </div>`;
+  if (jw.form) h += vJadwalForm();
+  if (jw.err) return h + `<div class="card center"><p class="muted">${esc(jw.err)}</p><button class="btn" type="button" id="jwUlang">Coba lagi</button></div>`;
+  if (!jw.data) return h + `<div class="card center"><p class="muted">Memuat jadwal…</p></div>`;
+  const total = jw.data.length, punyaku = jw.data.filter(j => j.saya).length;
+  if (!admin && punyaku) h += `<div class="note">Kamu punya <b>${punyaku} sesi</b> live minggu ini.</div>`;
+  for (let i = 0; i < 7; i++) {
+    const t = tambahHari(jw.senin, i), list = jw.data.filter(j => j.tanggal === t), d = dariTgl(t), hariIniKah = t === hariIni();
+    h += `<div class="card jw-day${hariIniKah ? " today" : ""}"><div class="jw-dayhead"><b>${HARI[d.getDay()]}, ${d.getDate()} ${BLN[d.getMonth()]}</b>${hariIniKah ? `<span class="pill ok">Hari ini</span>` : ""}<span class="small muted" style="margin-left:auto">${list.length} sesi</span></div>`;
+    if (!list.length) h += `<p class="small muted">Belum ada sesi</p>`;
+    else h += list.map(j => {
+      const st = LABEL_STATUS[j.status];
+      return `<${admin ? `button type="button" data-jw="${esc(j.id)}"` : "div"} class="jw-row${j.saya ? " me" : ""}">
+        <span class="jw-jam">${jamTitik(j.mulai)}–${jamTitik(j.selesai)}</span>
+        <span class="jw-who"><b>${j.saya ? "Kamu" : esc(j.host || "Belum ditentukan")}</b>${admin && !kom ? `<span class="small muted">${esc(j.komunitas)}</span>` : ""}${j.akun ? `<span class="small muted">@${esc(j.akun)}</span>` : ""}${j.catatan ? `<span class="small muted">${esc(j.catatan)}</span>` : ""}</span>
+        ${st ? `<span class="pill ${st[1]}">${st[0]}</span>` : ""}</${admin ? "button" : "div"}>`;
+    }).join("");
+    h += `</div>`;
+  }
+  if (total) h += `<button class="btn" type="button" id="jwSalin">Salin jadwal untuk WhatsApp</button>`;
+  if (admin) h += `<p class="small muted center" style="text-align:center">Ketuk sebuah sesi untuk mengubah atau menghapusnya.</p>`;
+  return h;
+}
+function hostUntuk(kom) { return jw.host.filter(a => !kom || a.komunitas === kom || a.peran === "admin"); }
+function vJadwalForm() {
+  const f = jw.form, kom = f.komunitas, hosts = hostUntuk(kom), akunList = (config.akun || {})[kom] || [];
+  const hostLain = f.username === "__lain";
+  const hariChip = [...Array(7)].map((_, i) => { const t = tambahHari(jw.senin, i), d = dariTgl(t); return `<label class="chip-cek"><input type="checkbox" value="${t}" ${f.tanggal.includes(t) ? "checked" : ""}><span>${HARI[d.getDay()].slice(0, 3)}<br>${d.getDate()}</span></label>`; }).join("");
+  return `<form class="card" id="jwForm" novalidate style="border-color:var(--accent)">
+    <div class="jw-head"><h2>${f.id ? "Ubah jadwal" : "Tambah jadwal"}</h2><button class="btn ghost" type="button" id="jwBatal">Batal</button></div>
+    <div class="grid">
+      <div class="field full"><label for="fKom">Komunitas <span class="req">*</span></label><select id="fKom"><option value="">Pilih komunitas</option>${(config.komunitas || []).map(k => `<option${k === kom ? " selected" : ""}>${esc(k)}</option>`).join("")}</select></div>
+      <div class="field full"><label for="fHost">Host</label><select id="fHost"><option value="">Belum ditentukan</option>${hosts.map(a => `<option value="${esc(a.username)}"${a.username === f.username ? " selected" : ""}>${esc(a.nama)}${a.komunitas && a.komunitas !== kom ? ` (${esc(a.komunitas)})` : ""}</option>`).join("")}<option value="__lain"${hostLain ? " selected" : ""}>Nama lain (tanpa akun)…</option></select>
+        <input id="fHostLain" placeholder="tulis nama host" value="${esc(f.hostLain || "")}" ${hostLain ? "" : "hidden"}></div>
+      <div class="field"><label for="fMulai">Jam mulai <span class="req">*</span></label><input type="time" id="fMulai" value="${esc(f.mulai)}"></div>
+      <div class="field"><label for="fSelesai">Jam selesai <span class="req">*</span></label><input type="time" id="fSelesai" value="${esc(f.selesai)}"></div>
+      <div class="field full"><label for="fAkun">Akun TikTok</label>
+        ${akunList.length ? `<select id="fAkun"><option value="">—</option>${akunList.map(a => `<option${a === f.akun ? " selected" : ""}>${esc(a)}</option>`).join("")}</select>` : `<input id="fAkun" value="${esc(f.akun)}" placeholder="mis. barayaanabul">`}</div>
+      ${f.id ? `<div class="field full"><label for="fTgl">Tanggal <span class="req">*</span></label><input type="date" id="fTgl" value="${esc(f.tanggal[0] || "")}"></div>`
+        : `<div class="field full"><label>Hari <span class="req">*</span></label><div class="chips" id="fHari">${hariChip}</div>
+          <div class="row-btn"><button class="linkbtn small" type="button" id="fSemua">Pilih semua</button><button class="linkbtn small" type="button" id="fKosong">Kosongkan</button></div></div>
+          <div class="field full"><label for="fUlang">Ulangi</label><select id="fUlang">${[1, 2, 3, 4].map(n => `<option value="${n}"${+f.ulang === n ? " selected" : ""}>${n === 1 ? "Hanya minggu ini" : `${n} minggu berturut-turut`}</option>`).join("")}</select></div>`}
+      <div class="field full"><label for="fCatatan">Catatan</label><input id="fCatatan" value="${esc(f.catatan)}" placeholder="mis. live adopsi, tampilkan anak kucing"></div>
+    </div>
+    <div class="note warn" id="fErr" hidden></div>
+    <button class="btn primary" type="submit" id="fSimpan">${f.id ? "Simpan perubahan" : "Simpan jadwal"}</button>
+    ${f.id ? `<button class="btn ghost" type="button" id="fHapus" style="color:var(--bad)">Hapus jadwal ini</button>` : ""}
+  </form>`;
+}
+function bukaFormJadwal(j) {
+  const kom = j ? j.komunitas : (jwKom() || "");
+  const akunList = (config.akun || {})[kom] || [];
+  jw.form = j ? { id: j.id, komunitas: j.komunitas, username: j.username || (j.host ? "__lain" : ""), hostLain: j.username ? "" : j.host, mulai: j.mulai, selesai: j.selesai, akun: j.akun, tanggal: [j.tanggal], catatan: j.catatan, ulang: 1 }
+    : { id: "", komunitas: kom, username: "", hostLain: "", mulai: "19:00", selesai: "20:00", akun: akunList[0] || "", tanggal: [], ulang: 1, catatan: "" };
+  render(); scrollTo(0, 0);
+}
+function pasangJadwal() {
+  jwMuat();
+  const go = s => { jw.senin = s; jw.form && !jw.form.id && (jw.form.tanggal = []); jwMuat(); };
+  $("#jwPrev").onclick = () => go(tambahHari(jw.senin, -7));
+  $("#jwNext").onclick = () => go(tambahHari(jw.senin, 7));
+  const k = $("#jwKini"); if (k) k.onclick = () => go(seninDari(hariIni()));
+  const ks = $("#jwKom"); if (ks) ks.onchange = () => { jw.kom = ks.value; jwMuat(); };
+  const u = $("#jwUlang"); if (u) u.onclick = () => jwMuat(true);
+  const t = $("#jwTambah"); if (t) t.onclick = () => bukaFormJadwal(null);
+  document.querySelectorAll("[data-jw]").forEach(b => b.onclick = () => bukaFormJadwal(jw.data.find(j => j.id === b.dataset.jw)));
+  const sl = $("#jwSalin"); if (sl) sl.onclick = salinJadwal;
+  if (jw.form) pasangFormJadwal();
+}
+function salinJadwal() {
+  const kom = jwKom(), baris = [`*Jadwal Live TikTok ${tglSingkat(jw.senin)} – ${tglSingkat(tambahHari(jw.senin, 6))}*`, kom ? kom : (isAdmin() ? "Semua komunitas" : profil.komunitas), ""];
+  for (let i = 0; i < 7; i++) {
+    const t = tambahHari(jw.senin, i), list = jw.data.filter(j => j.tanggal === t); if (!list.length) continue;
+    const d = dariTgl(t); baris.push(`*${HARI[d.getDay()]}, ${d.getDate()} ${BLN[d.getMonth()]}*`);
+    list.forEach(j => baris.push(`• ${jamTitik(j.mulai)}–${jamTitik(j.selesai)} ${j.host || "(belum ditentukan)"}${isAdmin() && !kom ? ` · ${j.komunitas}` : ""}`));
+    baris.push("");
+  }
+  baris.push("_Waktu WIB · jadwal bisa berubah, cek aplikasi Absen Live_");
+  const teks = baris.join("\n");
+  (navigator.clipboard ? navigator.clipboard.writeText(teks) : Promise.reject()).then(() => toastInline("Jadwal disalin. Tempel di WhatsApp.")).catch(() => { prompt("Salin teks ini:", teks); });
+}
+function pasangFormJadwal() {
+  const f = jw.form, form = $("#jwForm");
+  const baca = () => {
+    f.komunitas = $("#fKom").value; f.username = $("#fHost").value; f.hostLain = ($("#fHostLain").value || "").trim();
+    f.mulai = $("#fMulai").value; f.selesai = $("#fSelesai").value; f.akun = ($("#fAkun").value || "").trim().replace(/^@/, ""); f.catatan = $("#fCatatan").value.trim();
+    if (f.id) f.tanggal = [$("#fTgl").value]; else { f.tanggal = [...document.querySelectorAll("#fHari input:checked")].map(x => x.value); f.ulang = +$("#fUlang").value; }
+  };
+  form.addEventListener("change", e => {
+    baca();
+    if (e.target.id === "fKom") { const al = (config.akun || {})[f.komunitas] || []; f.akun = al[0] || ""; if (f.username && f.username !== "__lain" && !hostUntuk(f.komunitas).some(a => a.username === f.username)) f.username = ""; render(); }
+    if (e.target.id === "fHost") $("#fHostLain").hidden = f.username !== "__lain";
+  });
+  $("#jwBatal").onclick = () => { jw.form = null; render(); };
+  const fs = $("#fSemua"); if (fs) fs.onclick = () => { document.querySelectorAll("#fHari input").forEach(x => x.checked = true); baca(); };
+  const fk = $("#fKosong"); if (fk) fk.onclick = () => { document.querySelectorAll("#fHari input").forEach(x => x.checked = false); baca(); };
+  const err = (m, html) => { const el = $("#fErr"); el.innerHTML = html || esc(m); el.hidden = false; };
+  const kirimJadwal = async paksa => {
+    baca();
+    if (!f.komunitas) return err("Pilih komunitas.");
+    if (!f.mulai || !f.selesai) return err("Isi jam mulai dan jam selesai.");
+    if (!f.tanggal.filter(Boolean).length) return err(f.id ? "Isi tanggal." : "Pilih minimal satu hari.");
+    if (f.username === "__lain" && !f.hostLain) return err("Tulis nama host, atau pilih Belum ditentukan.");
+    let tanggal = f.tanggal.filter(Boolean);
+    if (!f.id && f.ulang > 1) tanggal = [...Array(f.ulang)].flatMap((_, w) => tanggal.map(t => tambahHari(t, 7 * w)));
+    const data = { id: f.id, tanggal, mulai: f.mulai, selesai: f.selesai, komunitas: f.komunitas, akun: f.akun, catatan: f.catatan,
+      username: f.username === "__lain" ? "" : f.username, host: f.username === "__lain" ? f.hostLain : "" };
+    const b = $("#fSimpan"); b.disabled = true; b.textContent = "Menyimpan…";
+    try {
+      const r = await panggil("POST", null, { action: "jadwal_simpan", token: profil.token, data, paksa });
+      if (!r.ok) {
+        b.disabled = false; b.textContent = f.id ? "Simpan perubahan" : "Simpan jadwal";
+        if (r.kode === "bentrok") { err("", `${esc(r.pesan)}<ul style="margin:6px 0;padding-left:18px">${r.bentrok.slice(0, 6).map(x => `<li>${esc(tglSingkat(x.tanggal))} ${jamTitik(x.mulai)}–${jamTitik(x.selesai)} ${esc(x.host || "")}</li>`).join("")}</ul><button type="button" class="btn dark" id="fPaksa" style="width:100%">Tetap simpan</button>`); $("#fPaksa").onclick = () => kirimJadwal(true); return; }
+        return err(r.pesan || "Jadwal belum tersimpan.");
+      }
+      toastInline(f.id ? "Jadwal diperbarui." : `${r.n} sesi jadwal tersimpan.`);
+      jw.form = null; jwMuat(true);
+    } catch (e) { b.disabled = false; b.textContent = "Coba lagi"; err("Tidak ada sambungan. Coba lagi saat ada sinyal."); }
+  };
+  form.onsubmit = e => { e.preventDefault(); kirimJadwal(false); };
+  const hp = $("#fHapus");
+  if (hp) hp.onclick = async () => {
+    if (!hp.dataset.yakin) { hp.dataset.yakin = "1"; hp.textContent = "Ketuk lagi untuk menghapus"; return; }
+    try { const r = await panggil("POST", null, { action: "jadwal_hapus", token: profil.token, id: f.id }); if (!r.ok) return err(r.pesan); toastInline("Jadwal dihapus."); jw.form = null; jwMuat(true); }
+    catch (e) { err("Tidak ada sambungan."); }
+  };
+}
+
+/* ---------- jadwal saya di form absen ---------- */
+let jadwalSaya = { tanggal: "", data: null };
+async function muatJadwalSaya(tanggal) {
+  if (!profil || !profil.token || !tanggal) return;
+  if (jadwalSaya.tanggal === tanggal && jadwalSaya.data) return tampilJadwalSaya();
+  jadwalSaya = { tanggal, data: null };
+  try {
+    const r = await panggil("GET", { action: "jadwal", token: profil.token, dari: tanggal, sampai: tanggal, komunitas: isAdmin() ? "" : profil.komunitas });
+    if (jadwalSaya.tanggal !== tanggal) return;
+    jadwalSaya.data = r.ok ? r.data.filter(j => j.saya) : [];
+  } catch (e) { jadwalSaya.data = []; }
+  tampilJadwalSaya();
+}
+function tampilJadwalSaya() {
+  const el = $("#jadwalSaya"); if (!el) return;
+  const list = jadwalSaya.data || [];
+  if (!list.length) { el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  el.innerHTML = `<div class="small" style="font-weight:700;margin-bottom:6px">Jadwal kamu di tanggal ini</div><div class="chips">${list.map(j => `<button type="button" class="chip-jadwal${draft && draft.mulai === j.mulai ? " on" : ""}" data-pakai="${esc(j.id)}">${jamTitik(j.mulai)}–${jamTitik(j.selesai)}${j.akun ? ` · @${esc(j.akun)}` : ""}${j.status === "hadir" ? " ✓" : ""}</button>`).join("")}</div><div class="small muted" style="margin-top:4px">Ketuk untuk mengisi jam dan akun otomatis.</div>`;
+  el.querySelectorAll("[data-pakai]").forEach(b => b.onclick = () => {
+    const j = list.find(x => x.id === b.dataset.pakai); if (!j) return;
+    draft.mulai = j.mulai; draft.selesai = j.selesai; if (j.akun) draft.akun = j.akun; simpanDraft(); render();
+  });
+}
+
+/* ---------- PAPAN PERINGKAT ---------- */
+const METRIK = [
+  ["jam", "Jam live", r => r.jam, v => `${String(v).replace(".", ",")} jam`],
+  ["sesi", "Sesi", r => r.sesi, v => `${v} sesi`],
+  ["kehadiran", "Kehadiran", r => r.kehadiran, v => v == null ? "–" : `${v}%`],
+  ["unik", "Penonton", r => r.unik, v => nf.format(v)],
+  ["follower", "Follower", r => r.follower, v => nf.format(v)]
+];
+let pk = { periode: "minggu", kom: null, metrik: "jam", data: null, err: "", kunci: "", dari: "", sampai: "" };
+function pkKom() { if (pk.kom === null) pk.kom = isAdmin() ? "" : (profil.komunitas || ""); return pk.kom; }
+async function pkMuat(paksa) {
+  const kunci = `${pk.periode}|${pkKom()}`;
+  if (!paksa && pk.kunci === kunci && (pk.data || pk.memuat)) return;
+  pk.kunci = kunci; pk.data = null; pk.err = ""; pk.memuat = true; if (layar === "peringkat") render();
+  try {
+    const r = await panggil("GET", { action: "peringkat", token: profil.token, periode: pk.periode, komunitas: pkKom() });
+    if (pk.kunci !== kunci) return;
+    if (r.ok) { pk.data = r.data; pk.dari = r.dari; pk.sampai = r.sampai; } else pk.err = r.pesan || "Papan peringkat tidak bisa dimuat.";
+  } catch (e) { pk.err = "Tidak ada sambungan."; }
+  pk.memuat = false; if (layar === "peringkat") render();
+}
+function vPeringkat() {
+  const m = METRIK.find(x => x[0] === pk.metrik) || METRIK[0];
+  let h = `<div class="card" style="gap:12px"><div><h2>Papan peringkat</h2><p class="small muted">${pk.dari ? `${tglSingkat(pk.dari)} – ${tglSingkat(pk.sampai)} · ` : ""}${pkKom() ? esc(pkKom()) : "Semua komunitas"}</p></div>
+    <div class="seg" role="tablist">${[["minggu", "Minggu ini"], ["bulan", "Bulan ini"], ["bulan_lalu", "Bulan lalu"]].map(([k, l]) => `<button type="button" data-per="${k}" aria-selected="${pk.periode === k}">${l}</button>`).join("")}</div>
+    <div class="field"><label for="pkKom">Komunitas</label><select id="pkKom"><option value="">Semua komunitas</option>${(config.komunitas || []).map(k => `<option${k === pkKom() ? " selected" : ""}>${esc(k)}</option>`).join("")}</select></div>
+    <div class="chips">${METRIK.map(([k, l]) => `<button type="button" class="chip-jadwal${pk.metrik === k ? " on" : ""}" data-met="${k}">${l}</button>`).join("")}</div></div>`;
+  if (pk.err) return h + `<div class="card center"><p class="muted">${esc(pk.err)}</p></div>`;
+  if (!pk.data) return h + `<div class="card center"><p class="muted">Memuat peringkat…</p></div>`;
+  let list = pk.data.filter(r => m[2](r) != null).sort((a, b) => m[2](b) - m[2](a) || b.menit - a.menit);
+  if (!list.length) return h + `<div class="card center"><p class="muted">Belum ada data di periode ini.</p></div>`;
+  const maks = Math.max(...list.map(r => m[2](r) || 0), 1);
+  let rank = 0, prev = null;
+  h += `<div class="card" style="gap:6px;padding:10px">` + list.map((r, i) => {
+    const v = m[2](r); if (v !== prev) { rank = i + 1; prev = v; }
+    const medal = rank <= 3 && v > 0 ? ["🥇", "🥈", "🥉"][rank - 1] : "";
+    return `<div class="pk-row${r.saya ? " me" : ""}"><span class="pk-rank">${medal || rank}</span>
+      <div class="pk-main"><div class="pk-top"><b>${esc(r.nama)}${r.saya ? " (kamu)" : ""}</b><b class="pk-val">${m[3](v)}</b></div>
+        <div class="pk-bar"><span style="width:${Math.max(2, (v || 0) / maks * 100)}%"></span></div>
+        <div class="small muted">${esc(r.komunitas || "")}${r.komunitas ? " · " : ""}${r.sesi} sesi · ${String(r.jam).replace(".", ",")} jam${r.jadwal ? ` · hadir ${r.hadirJadwal}/${r.jadwal} jadwal` : ""}</div></div></div>`;
+  }).join("") + `</div>`;
+  h += `<p class="small muted" style="text-align:center">Kehadiran = sesi jadwal yang ada absennya. Penonton dan follower dari angka yang diisi host saat absen.</p>`;
+  return h;
+}
+function pasangPeringkat() {
+  pkMuat();
+  document.querySelectorAll("[data-per]").forEach(b => b.onclick = () => { pk.periode = b.dataset.per; pkMuat(); });
+  document.querySelectorAll("[data-met]").forEach(b => b.onclick = () => { pk.metrik = b.dataset.met; render(); });
+  const k = $("#pkKom"); if (k) k.onchange = () => { pk.kom = k.value; pkMuat(); };
 }
 
 /* ---------- foto ---------- */
