@@ -176,7 +176,7 @@ function pasangMasuk() {
   };
 }
 function terimaProfil(r, token) {
-  config = { komunitas: r.komunitas || [], akun: r.akun || {}, pengaturan: r.pengaturan || (config && config.pengaturan) || {} }; simpan(K.config, config);
+  config = { komunitas: r.komunitas || [], akun: r.akun || {}, pengaturan: r.pengaturan || (config && config.pengaturan) || {}, vapid: r.vapid || (config && config.vapid) || "" }; simpan(K.config, config);
   const pr = r.profil || {};
   const lama = profil && profil.username === pr.username ? profil : {};
   const akunList = config.akun[pr.komunitas] || [];
@@ -367,7 +367,7 @@ function pasangRiwayat() {
 /* ---------- profil ---------- */
 function vProfil() {
   const akunList = (config.akun || {})[profil.komunitas] || [];
-  return `<div class="card"><h2>${esc(profil.host)}</h2>
+  return `${vPengingat()}<div class="card"><h2>${esc(profil.host)}</h2>
     <p class="muted small">Username: <b>${esc(profil.username)}</b> · Komunitas: <b>${esc(profil.komunitas)}</b><br>Nama dan komunitas diatur oleh admin.</p></div>
   <form class="card" id="fProfil" novalidate><h3>Isian otomatis di form absen</h3>
     <div class="field"><label for="pAkun">Akun TikTok yang biasa dipakai</label><input id="pAkun" list="dlAkunP" value="${esc(profil.akun || "")}"><datalist id="dlAkunP">${akunList.map(a => `<option value="${esc(a)}">`).join("")}</datalist></div>
@@ -387,6 +387,7 @@ function vProfil() {
   <p class="small muted" style="text-align:center">Absen Live · data dikirim ke Google Sheet yayasan</p>`;
 }
 function pasangProfil() {
+  pasangPengingat();
   pasangTombolPasang();
   const tulis = (el, t, ok) => { el.textContent = t; el.style.color = ok ? "var(--good)" : "var(--bad)"; el.hidden = false; };
   $("#fProfil").onsubmit = e => {
@@ -414,6 +415,7 @@ function pasangProfil() {
   const k = $("#keluar");
   k.onclick = () => {
     if (!k.dataset.yakin) { k.dataset.yakin = "1"; k.textContent = antrean.length ? `Ada ${antrean.length} absen belum terkirim dan akan terhapus. Ketuk lagi untuk tetap keluar` : "Ketuk lagi untuk keluar"; k.style.color = "var(--bad)"; return; }
+    matikanPengingat(true);
     [K.profil, K.draft, K.antrean, K.config].forEach(x => localStorage.removeItem(x));
     profil = { username: profil.username }; simpan(K.profil, profil); draft = null; antrean = []; riwayat = null; pesanMasuk = ""; render();
   };
@@ -447,7 +449,7 @@ const LABEL_STATUS = { hadir: ["Sudah absen", "ok"], terlewat: ["Belum absen", "
 function vJadwal() {
   const kom = jwKom(), admin = isAdmin();
   const akhir = tambahHari(jw.senin, 6), mingguIni = seninDari(hariIni()) === jw.senin;
-  let h = `<div class="card" style="gap:12px">
+  let h = `${ntf.aktif === false && ntf.dukung !== null ? vPengingat() : ""}<div class="card" style="gap:12px">
     <div class="jw-head"><div><h2>Jadwal live</h2><p class="small muted">${admin ? (kom ? esc(kom) : "Semua komunitas") : esc(profil.komunitas)} · waktu WIB</p></div>
       ${admin ? `<button class="btn primary jw-add" type="button" id="jwTambah">+ Jadwal</button>` : ""}</div>
     <div class="jw-week"><button class="btn" type="button" id="jwPrev" aria-label="Minggu sebelumnya">‹</button>
@@ -511,7 +513,7 @@ function bukaFormJadwal(j) {
   render(); scrollTo(0, 0);
 }
 function pasangJadwal() {
-  jwMuat();
+  jwMuat(); pasangPengingat();
   const go = s => { jw.senin = s; jw.form && !jw.form.id && (jw.form.tanggal = []); jwMuat(); };
   $("#jwPrev").onclick = () => go(tambahHari(jw.senin, -7));
   $("#jwNext").onclick = () => go(tambahHari(jw.senin, 7));
@@ -658,6 +660,85 @@ function pasangPeringkat() {
   const k = $("#pkKom"); if (k) k.onchange = () => { pk.kom = k.value; pkMuat(); };
 }
 
+/* ---------- PENGINGAT JADWAL (notifikasi push) ---------- */
+let ntf = { dukung: null, izin: "", aktif: null, sibuk: false, pesan: "" };
+const b64keBytes = s => { const p = "=".repeat((4 - s.length % 4) % 4); const r = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(r, c => c.charCodeAt(0)); };
+function labelPerangkat() { return (isIOS ? "iPhone" : isAndroid ? "Android" : "Komputer") + (sudahTerpasang() ? " · aplikasi" : " · browser"); }
+async function regSW() { if (!("serviceWorker" in navigator)) return null; try { return await Promise.race([navigator.serviceWorker.ready, new Promise(r => setTimeout(() => r(null), 6000))]); } catch (e) { return null; } }
+async function simpanSid(sid) { try { const c = await caches.open("absen-meta"); await c.put("./__sid", new Response(sid)); } catch (e) {} }
+async function cekPengingat(daftarUlang) {
+  if (GAS || !("Notification" in window) || !("PushManager" in window) || !("serviceWorker" in navigator)) { ntf.dukung = false; segarkanPengingat(); return; }
+  ntf.dukung = true; ntf.izin = Notification.permission;
+  const reg = await regSW(); const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription().catch(() => null) : null;
+  ntf.aktif = !!(sub && ntf.izin === "granted");
+  segarkanPengingat();
+  // pastikan server tahu HP ini milik akun yang sedang login
+  if (daftarUlang && ntf.aktif && profil && profil.token && navigator.onLine) {
+    try { const r = await panggil("POST", null, { action: "notif_daftar", token: profil.token, sub: sub.toJSON(), perangkat: labelPerangkat() }); if (r.ok) simpanSid(r.sid); } catch (e) {}
+  }
+}
+function vPengingat() {
+  let isi;
+  if (ntf.dukung === null) return `<div class="card" id="kartuNotif" hidden></div>`;
+  if (!ntf.dukung || (isIOS && !sudahTerpasang())) {
+    isi = isIOS ? `<p class="small">Di iPhone, pengingat hanya bisa aktif kalau aplikasi sudah <b>dipasang ke Layar Utama</b> lalu dibuka dari ikonnya (iOS 16.4 atau lebih baru).</p>${!sudahTerpasang() ? `<p class="small muted">Safari → tombol Bagikan → Tambahkan ke Layar Utama.</p>` : ""}`
+      : `<p class="small">Browser ini belum mendukung notifikasi. Buka aplikasi di <b>Google Chrome</b>.</p>`;
+  } else if (ntf.izin === "denied") {
+    isi = `<p class="small">Notifikasi diblokir untuk aplikasi ini. Buka pengaturan HP → Aplikasi/Situs → <b>Absen Live</b> (atau Chrome → Setelan situs → Notifikasi), lalu izinkan notifikasi dan buka ulang aplikasi.</p>`;
+  } else if (ntf.aktif) {
+    isi = `<p class="small">Aktif di HP ini. Kamu akan diberi tahu <b>1 jam sebelum</b> jadwal live.</p>
+      <div class="row-actions" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button" id="ntfUji">Kirim notifikasi uji</button><button class="btn ghost" type="button" id="ntfMati">Matikan</button></div>`;
+  } else {
+    isi = `<p class="small">Dapatkan notifikasi di HP ini <b>1 jam sebelum</b> jadwal live kamu, walaupun aplikasi sedang ditutup.</p>
+      <button class="btn primary" type="button" id="ntfAktif">${ntf.sibuk ? "Mengaktifkan…" : "Aktifkan pengingat"}</button>`;
+  }
+  return `<div class="card" id="kartuNotif" style="gap:10px;${ntf.aktif ? "" : "border-color:var(--accent)"}">
+    <div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:22px">🔔</span><b style="flex:1">Pengingat jadwal live</b>${ntf.aktif ? `<span class="pill ok">Aktif</span>` : ""}</div>
+    ${isi}${ntf.pesan ? `<p class="small" style="color:var(--muted)">${esc(ntf.pesan)}</p>` : ""}</div>`;
+}
+function segarkanPengingat() {
+  const k = $("#kartuNotif"); if (!k) return;
+  if (layar === "jadwal" && ntf.aktif) { k.remove(); return; }
+  const t = document.createElement("div"); t.innerHTML = vPengingat(); k.replaceWith(t.firstElementChild); pasangPengingat();
+}
+function pasangPengingat() {
+  const a = $("#ntfAktif"); if (a) a.onclick = aktifkanPengingat;
+  const u = $("#ntfUji"); if (u) u.onclick = async () => {
+    u.disabled = true; u.textContent = "Mengirim…";
+    try { const r = await panggil("POST", null, { action: "notif_uji", token: profil.token });
+      ntf.pesan = !r.ok ? (r.pesan || "Gagal mengirim.") : r.terkirim ? `Terkirim ke ${r.terkirim} HP. Notifikasi muncul dalam beberapa detik.` : `Gagal terkirim (kode ${(r.kode || []).join(", ")}). Coba Matikan lalu Aktifkan lagi.`;
+    } catch (e) { ntf.pesan = "Tidak ada sambungan."; }
+    segarkanPengingat();
+  };
+  const m = $("#ntfMati"); if (m) m.onclick = async () => { await matikanPengingat(false); ntf.pesan = "Pengingat dimatikan di HP ini."; segarkanPengingat(); };
+}
+async function aktifkanPengingat() {
+  if (ntf.sibuk) return;
+  ntf.sibuk = true; ntf.pesan = ""; segarkanPengingat();
+  try {
+    if (!config.vapid) { const r = await panggil("GET", { action: "config", token: profil.token }); if (r.ok) terimaProfil(r); }
+    if (!config.vapid) throw new Error("Server belum siap. Minta admin menjalankan setup terbaru.");
+    const izin = await Notification.requestPermission(); ntf.izin = izin;
+    if (izin !== "granted") throw new Error(izin === "denied" ? "" : "Izin notifikasi belum diberikan.");
+    const reg = await regSW(); if (!reg) throw new Error("Aplikasi belum siap. Tutup lalu buka lagi aplikasinya.");
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64keBytes(config.vapid) });
+    const r = await panggil("POST", null, { action: "notif_daftar", token: profil.token, sub: sub.toJSON(), perangkat: labelPerangkat() });
+    if (!r.ok) throw new Error(r.pesan || "HP belum terdaftar.");
+    await simpanSid(r.sid);
+    ntf.aktif = true; ntf.pesan = "Berhasil. Coba tekan Kirim notifikasi uji.";
+  } catch (e) { ntf.pesan = e.message || ""; ntf.aktif = false; }
+  ntf.sibuk = false; segarkanPengingat();
+}
+async function matikanPengingat(diam) {
+  try {
+    const reg = await regSW(); const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+    if (sub) { if (profil && profil.token) panggil("POST", null, { action: "notif_hapus", token: profil.token, endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); }
+    const c = await caches.open("absen-meta"); await c.delete("./__sid");
+  } catch (e) {}
+  ntf.aktif = false;
+}
+
 /* ---------- foto ---------- */
 function kecilkan(file) {
   return new Promise((ok, no) => {
@@ -725,7 +806,11 @@ function pasangTombolPasang() {
 
 /* ---------- mulai ---------- */
 if (!GAS && "serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+const dariHash = () => { const h = (location.hash || "").slice(1); if (["absen", "jadwal", "peringkat", "riwayat", "profil"].includes(h)) { layar = h; hasil = null; } };
+dariHash();
+addEventListener("hashchange", () => { dariHash(); render(); scrollTo(0, 0); });
 render();
+cekPengingat(true);
 if (profil && profil.token && apiSiap() && navigator.onLine) {
   kirimAntrean();
   panggil("GET", { action: "config", token: profil.token }).then(r => { if (r.ok) { terimaProfil(r); if (layar === "profil") render(); } }).catch(() => {});
